@@ -1,4 +1,4 @@
--- Delta Ultra-Reliable Collector (Continuous Coin Hunt + Teleport Coins + Role Teleports + Instant Kill + God Mode + Anti-Exploit Shield)
+-- Delta Ultra-Reliable Collector (Continuous Coin Hunt + Teleport Coins + Role Teleports + Instant Kill + God Mode + Anti-AFK)
 local Players = game:GetService("Players")
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
@@ -60,7 +60,6 @@ local autoRotateEnabled = false
 local instantKillEnabled = false
 local godModeEnabled = false
 local teleportCoinsEnabled = false
-local antiExploitEnabled = true
 local currentPlayerRole = "Default"
 
 -- Role Detection for Murderer & Sheriff (MM2 / Combat Game Standard)
@@ -129,7 +128,7 @@ screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 370, 0, 625)
+mainFrame.Size = UDim2.new(0, 370, 0, 600)
 mainFrame.Position = UDim2.new(0, 20, 0, 20)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BackgroundTransparency = 0.15
@@ -154,7 +153,7 @@ titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.Text = "Delta Ultra Collector (Anti-Exploit Shield)"
+titleLabel.Text = "Delta Ultra Collector (TP Coins & Instant Kill)"
 titleLabel.Parent = topBar
 
 -- Minimize Button (-)
@@ -275,22 +274,10 @@ godModeBtn.Text = "God Mode: OFF"
 godModeBtn.Parent = contentContainer
 Instance.new("UICorner", godModeBtn).CornerRadius = UDim.new(0, 6)
 
-local antiExploitBtn = Instance.new("TextButton")
-antiExploitBtn.Name = "AntiExploitButton"
-antiExploitBtn.Size = UDim2.new(0, 330, 0, 26)
-antiExploitBtn.Position = UDim2.new(0, 20, 0, 220)
-antiExploitBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-antiExploitBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-antiExploitBtn.TextSize = 12
-antiExploitBtn.Font = Enum.Font.SourceSansBold
-antiExploitBtn.Text = "Anti-Exploit Shield: ON"
-antiExploitBtn.Parent = contentContainer
-Instance.new("UICorner", antiExploitBtn).CornerRadius = UDim.new(0, 6)
-
 local autoToggleBtn = Instance.new("TextButton")
 autoToggleBtn.Name = "AutoToggleButton"
 autoToggleBtn.Size = UDim2.new(0, 330, 0, 26)
-autoToggleBtn.Position = UDim2.new(0, 20, 0, 250)
+autoToggleBtn.Position = UDim2.new(0, 20, 0, 220)
 autoToggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 autoToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 autoToggleBtn.TextSize = 12
@@ -302,7 +289,7 @@ Instance.new("UICorner", autoToggleBtn).CornerRadius = UDim.new(0, 6)
 local espBtn = Instance.new("TextButton")
 espBtn.Name = "ESPButton"
 espBtn.Size = UDim2.new(0, 330, 0, 26)
-espBtn.Position = UDim2.new(0, 20, 0, 280)
+espBtn.Position = UDim2.new(0, 20, 0, 250)
 espBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
 espBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 espBtn.TextSize = 12
@@ -314,7 +301,7 @@ Instance.new("UICorner", espBtn).CornerRadius = UDim.new(0, 6)
 -- Threshold Manager UI Inputs
 local speedBox = Instance.new("TextBox")
 speedBox.Size = UDim2.new(0, 330, 0, 22)
-speedBox.Position = UDim2.new(0, 20, 0, 312)
+speedBox.Position = UDim2.new(0, 20, 0, 282)
 speedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 speedBox.TextSize = 11
@@ -326,7 +313,7 @@ Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
 
 local stuckBox = Instance.new("TextBox")
 stuckBox.Size = UDim2.new(0, 330, 0, 22)
-stuckBox.Position = UDim2.new(0, 20, 0, 338)
+stuckBox.Position = UDim2.new(0, 20, 0, 308)
 stuckBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 stuckBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 stuckBox.TextSize = 11
@@ -338,7 +325,7 @@ Instance.new("UICorner", stuckBox).CornerRadius = UDim.new(0, 6)
 
 local capBox = Instance.new("TextBox")
 capBox.Size = UDim2.new(0, 330, 0, 22)
-capBox.Position = UDim2.new(0, 20, 0, 364)
+capBox.Position = UDim2.new(0, 20, 0, 334)
 capBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 capBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 capBox.TextSize = 11
@@ -350,7 +337,7 @@ Instance.new("UICorner", capBox).CornerRadius = UDim.new(0, 6)
 
 local toggleDelayBox = Instance.new("TextBox")
 toggleDelayBox.Size = UDim2.new(0, 330, 0, 22)
-toggleDelayBox.Position = UDim2.new(0, 20, 0, 390)
+toggleDelayBox.Position = UDim2.new(0, 20, 0, 360)
 toggleDelayBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 toggleDelayBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleDelayBox.TextSize = 11
@@ -362,8 +349,8 @@ Instance.new("UICorner", toggleDelayBox).CornerRadius = UDim.new(0, 6)
 
 local logBox = Instance.new("TextLabel")
 logBox.Name = "CoordinateLogBox"
-logBox.Size = UDim2.new(0, 330, 0, 160)
-logBox.Position = UDim2.new(0, 20, 0, 418)
+logBox.Size = UDim2.new(0, 330, 0, 180)
+logBox.Position = UDim2.new(0, 20, 0, 388)
 logBox.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 logBox.BackgroundTransparency = 0.2
 logBox.TextColor3 = Color3.fromRGB(0, 255, 128)
@@ -372,7 +359,7 @@ logBox.Font = Enum.Font.Code
 logBox.TextXAlignment = Enum.TextXAlignment.Left
 logBox.TextYAlignment = Enum.TextYAlignment.Top
 logBox.TextWrapped = true
-logBox.Text = "=== METRICS ===\nRole: Default\nMode: Off | Anti-Exploit: ON\nStatus: Idle\nCoins in Game: 0 | Session: 0\nInventory: 0 / 40\nPlayer: X:0 Y:0 Z:0"
+logBox.Text = "=== METRICS ===\nRole: Default\nMode: Off | TP Coins: OFF | Instant Kill: OFF\nStatus: Idle\nCoins in Game: 0 | Session: 0\nInventory: 0 / 40\nPlayer: X:0 Y:0 Z:0"
 logBox.Parent = contentContainer
 Instance.new("UICorner", logBox).CornerRadius = UDim.new(0, 6)
 
@@ -386,7 +373,7 @@ minBtn.MouseButton1Click:Connect(function()
 		contentContainer.Visible = false
 	else
 		minBtn.Text = "-"
-		mainFrame.Size = UDim2.new(0, 370, 0, 625)
+		mainFrame.Size = UDim2.new(0, 370, 0, 600)
 		contentContainer.Visible = true
 	end
 end)
@@ -396,7 +383,6 @@ closeBtn.MouseButton1Click:Connect(function()
 	instantKillEnabled = false
 	godModeEnabled = false
 	teleportCoinsEnabled = false
-	antiExploitEnabled = false
 	if activeMoverConnection then activeMoverConnection:Disconnect() end
 	visualFolder:ClearAllChildren()
 	espFolder:ClearAllChildren()
@@ -466,17 +452,6 @@ instantKillBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
-antiExploitBtn.MouseButton1Click:Connect(function()
-	antiExploitEnabled = not antiExploitEnabled
-	if antiExploitEnabled then
-		antiExploitBtn.Text = "Anti-Exploit Shield: ON"
-		antiExploitBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-	else
-		antiExploitBtn.Text = "Anti-Exploit Shield: OFF"
-		antiExploitBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	end
-end)
-
 tpMurdererBtn.MouseButton1Click:Connect(function()
 	local murderer, _ = findMurdererAndSheriff()
 	if murderer and murderer.Character and murderer.Character:FindFirstChild("HumanoidRootPart") then
@@ -530,50 +505,6 @@ autoToggleBtn.MouseButton1Click:Connect(function()
 	else
 		autoToggleBtn.Text = "Auto-Toggle: OFF"
 		autoToggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	end
-end)
-
--- Comprehensive Anti-Exploit Shield Loop (Anti-Fling, Anti-Void, and Round-Start Proximity Evasion)
-task.spawn(function()
-	local lastSafeCFrame = CFrame.new(0, 50, 0)
-	while true do
-		task.wait(0.1)
-		if antiExploitEnabled then
-			local char = player.Character
-			local hrp = char and char:FindFirstChild("HumanoidRootPart")
-			local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-			
-			if hrp and humanoid then
-				-- 1. Anti-Fling Velocity Limiter (Blocks physics manipulation exploiters)
-				if hrp.AssemblyLinearVelocity.Magnitude > 180 and not teleportCoinsEnabled then
-					hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-					hrp.CFrame = lastSafeCFrame
-					statusMessage = "Blocked Fling Exploit!"
-				else
-					if hrp.Position.Y > -100 and math.abs(hrp.Position.Y) < 10000 then
-						lastSafeCFrame = hrp.CFrame
-					end
-				end
-				
-				-- 2. Anti-Void Protection (Teleports back up if thrown off the map)
-				if hrp.Position.Y < -50 then
-					hrp.CFrame = lastSafeCFrame + Vector3.new(0, 15, 0)
-					hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-					statusMessage = "Protected against Void Exploit!"
-				end
-				
-				-- 3. Round-Start Proximity Exploit Guard (Instantly evades players locking onto your spawn)
-				for _, p in ipairs(Players:GetPlayers()) do
-					if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-						local pDist = (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
-						if pDist < 7 then
-							hrp.CFrame = hrp.CFrame + Vector3.new(math.random(-40, 40), 20, math.random(-40, 40))
-							statusMessage = "Shield Evaded Nearby Threat!"
-						end
-					end
-				end
-			end
-		end
 	end
 end)
 
@@ -1354,8 +1285,8 @@ task.spawn(function()
 		end
 
 		logBox.Text = string.format(
-			"=== METRICS ===\nRole: %s\nMode: %s | Anti-Exploit: %s\nStatus: %s\nCoins in Game: %d | Session: %d\nInventory: %d / %d\nFound: %d | Queued: %d\nTarget: %s\nPlayer: %s",
-			currentPlayerRole, activeMode, (antiExploitEnabled and "ON" or "OFF"), statusMessage, totalCoinsInGame, collectedCount, collectedCount, MAX_CAPACITY, #activeCoins, #coinQueue, targetCoinName, playerPosStr
+			"=== METRICS ===\nRole: %s\nMode: %s | TP Coins: %s | Instant Kill: %s\nGod Mode: %s\nStatus: %s\nCoins in Game: %d | Session: %d\nInventory: %d / %d\nFound: %d | Queued: %d\nTarget: %s\nPlayer: %s",
+			currentPlayerRole, activeMode, (teleportCoinsEnabled and "ON" or "OFF"), (instantKillEnabled and "ON" or "OFF"), (godModeEnabled and "ON" or "OFF"), statusMessage, totalCoinsInGame, collectedCount, collectedCount, MAX_CAPACITY, #activeCoins, #coinQueue, targetCoinName, playerPosStr
 		)
 	end
 end)
