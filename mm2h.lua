@@ -1,10 +1,17 @@
--- Delta Ultra-Reliable Collector (Continuous Coin Hunt + Robust Gun Aiming & Auto-Kill + God Mode + Role Adaptation + Fixed UI + Seeded Diversification)
+-- Delta Ultra-Reliable Collector (Continuous Coin Hunt + Teleport Coins + Role Teleports + Instant Kill + God Mode + Anti-Exploit Shield)
 local Players = game:GetService("Players")
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local VirtualUser = game:GetService("VirtualUser")
 
 local player = Players.LocalPlayer
+
+-- Anti-AFK Kick Prevention (Handles Roblox's 20-minute idle timeout)
+player.Idled:Connect(function()
+	VirtualUser:CaptureController()
+	VirtualUser:ClickButton2(Vector2.new())
+end)
 
 -- Unique Seed Generator per client instance to ensure different devices take unique paths
 local rng = Random.new(tick() + player.UserId + math.random(1, 100000))
@@ -39,6 +46,7 @@ local failedCoinBlacklist = {}
 local loopToken = 0
 local currentWaypoints = {}
 local waypointIndex = 1
+local consecutiveStuckCount = 0
 
 -- RUNTIME CONFIGURABLE THRESHOLDS & METRICS
 local SAFE_SPEED = 24
@@ -49,9 +57,29 @@ local TOGGLE_DELAY = 15
 local collectedCount = 0
 local totalCoinsInGame = 0
 local autoRotateEnabled = false
-local autoKillEnabled = false
+local instantKillEnabled = false
 local godModeEnabled = false
+local teleportCoinsEnabled = false
+local antiExploitEnabled = true
 local currentPlayerRole = "Default"
+
+-- Role Detection for Murderer & Sheriff (MM2 / Combat Game Standard)
+local function findMurdererAndSheriff()
+	local murderer, sheriff = nil, nil
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			local char = p.Character
+			local backpack = p:FindFirstChildOfClass("Backpack")
+			
+			local hasKnife = char:FindFirstChild("Knife") or (backpack and backpack:FindFirstChild("Knife"))
+			local hasGun = char:FindFirstChild("Gun") or char:FindFirstChild("Revolver") or (backpack and (backpack:FindFirstChild("Gun") or backpack:FindFirstChild("Revolver")))
+			
+			if hasKnife then murderer = p end
+			if hasGun then sheriff = p end
+		end
+	end
+	return murderer, sheriff
+end
 
 -- Dynamic Role Detection Function
 local function updatePlayerRole()
@@ -101,7 +129,7 @@ screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 370, 0, 520)
+mainFrame.Size = UDim2.new(0, 370, 0, 625)
 mainFrame.Position = UDim2.new(0, 20, 0, 20)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BackgroundTransparency = 0.15
@@ -126,7 +154,7 @@ titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.Text = "Delta Ultra Collector"
+titleLabel.Text = "Delta Ultra Collector (Anti-Exploit Shield)"
 titleLabel.Parent = topBar
 
 -- Minimize Button (-)
@@ -187,22 +215,58 @@ wanderBtn.Text = "Random Wander: OFF"
 wanderBtn.Parent = contentContainer
 Instance.new("UICorner", wanderBtn).CornerRadius = UDim.new(0, 6)
 
-local autoKillBtn = Instance.new("TextButton")
-autoKillBtn.Name = "AutoKillButton"
-autoKillBtn.Size = UDim2.new(0, 330, 0, 26)
-autoKillBtn.Position = UDim2.new(0, 20, 0, 70)
-autoKillBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-autoKillBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-autoKillBtn.TextSize = 12
-autoKillBtn.Font = Enum.Font.SourceSansBold
-autoKillBtn.Text = "Auto-Kill / Aim: OFF"
-autoKillBtn.Parent = contentContainer
-Instance.new("UICorner", autoKillBtn).CornerRadius = UDim.new(0, 6)
+local tpCoinsBtn = Instance.new("TextButton")
+tpCoinsBtn.Name = "TpCoinsButton"
+tpCoinsBtn.Size = UDim2.new(0, 330, 0, 26)
+tpCoinsBtn.Position = UDim2.new(0, 20, 0, 70)
+tpCoinsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+tpCoinsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+tpCoinsBtn.TextSize = 12
+tpCoinsBtn.Font = Enum.Font.SourceSansBold
+tpCoinsBtn.Text = "Teleport Coins: OFF"
+tpCoinsBtn.Parent = contentContainer
+Instance.new("UICorner", tpCoinsBtn).CornerRadius = UDim.new(0, 6)
+
+local instantKillBtn = Instance.new("TextButton")
+instantKillBtn.Name = "InstantKillButton"
+instantKillBtn.Size = UDim2.new(0, 330, 0, 26)
+instantKillBtn.Position = UDim2.new(0, 20, 0, 100)
+instantKillBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+instantKillBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+instantKillBtn.TextSize = 12
+instantKillBtn.Font = Enum.Font.SourceSansBold
+instantKillBtn.Text = "Instant Kill: OFF"
+instantKillBtn.Parent = contentContainer
+Instance.new("UICorner", instantKillBtn).CornerRadius = UDim.new(0, 6)
+
+local tpMurdererBtn = Instance.new("TextButton")
+tpMurdererBtn.Name = "TpMurdererButton"
+tpMurdererBtn.Size = UDim2.new(0, 330, 0, 26)
+tpMurdererBtn.Position = UDim2.new(0, 20, 0, 130)
+tpMurdererBtn.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
+tpMurdererBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+tpMurdererBtn.TextSize = 12
+tpMurdererBtn.Font = Enum.Font.SourceSansBold
+tpMurdererBtn.Text = "Teleport to Murderer"
+tpMurdererBtn.Parent = contentContainer
+Instance.new("UICorner", tpMurdererBtn).CornerRadius = UDim.new(0, 6)
+
+local tpSheriffBtn = Instance.new("TextButton")
+tpSheriffBtn.Name = "TpSheriffButton"
+tpSheriffBtn.Size = UDim2.new(0, 330, 0, 26)
+tpSheriffBtn.Position = UDim2.new(0, 20, 0, 160)
+tpSheriffBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 180)
+tpSheriffBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+tpSheriffBtn.TextSize = 12
+tpSheriffBtn.Font = Enum.Font.SourceSansBold
+tpSheriffBtn.Text = "Teleport to Sheriff"
+tpSheriffBtn.Parent = contentContainer
+Instance.new("UICorner", tpSheriffBtn).CornerRadius = UDim.new(0, 6)
 
 local godModeBtn = Instance.new("TextButton")
 godModeBtn.Name = "GodModeButton"
 godModeBtn.Size = UDim2.new(0, 330, 0, 26)
-godModeBtn.Position = UDim2.new(0, 20, 0, 100)
+godModeBtn.Position = UDim2.new(0, 20, 0, 190)
 godModeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 godModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 godModeBtn.TextSize = 12
@@ -211,10 +275,22 @@ godModeBtn.Text = "God Mode: OFF"
 godModeBtn.Parent = contentContainer
 Instance.new("UICorner", godModeBtn).CornerRadius = UDim.new(0, 6)
 
+local antiExploitBtn = Instance.new("TextButton")
+antiExploitBtn.Name = "AntiExploitButton"
+antiExploitBtn.Size = UDim2.new(0, 330, 0, 26)
+antiExploitBtn.Position = UDim2.new(0, 20, 0, 220)
+antiExploitBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+antiExploitBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+antiExploitBtn.TextSize = 12
+antiExploitBtn.Font = Enum.Font.SourceSansBold
+antiExploitBtn.Text = "Anti-Exploit Shield: ON"
+antiExploitBtn.Parent = contentContainer
+Instance.new("UICorner", antiExploitBtn).CornerRadius = UDim.new(0, 6)
+
 local autoToggleBtn = Instance.new("TextButton")
 autoToggleBtn.Name = "AutoToggleButton"
 autoToggleBtn.Size = UDim2.new(0, 330, 0, 26)
-autoToggleBtn.Position = UDim2.new(0, 20, 0, 130)
+autoToggleBtn.Position = UDim2.new(0, 20, 0, 250)
 autoToggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 autoToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 autoToggleBtn.TextSize = 12
@@ -226,7 +302,7 @@ Instance.new("UICorner", autoToggleBtn).CornerRadius = UDim.new(0, 6)
 local espBtn = Instance.new("TextButton")
 espBtn.Name = "ESPButton"
 espBtn.Size = UDim2.new(0, 330, 0, 26)
-espBtn.Position = UDim2.new(0, 20, 0, 160)
+espBtn.Position = UDim2.new(0, 20, 0, 280)
 espBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
 espBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 espBtn.TextSize = 12
@@ -238,7 +314,7 @@ Instance.new("UICorner", espBtn).CornerRadius = UDim.new(0, 6)
 -- Threshold Manager UI Inputs
 local speedBox = Instance.new("TextBox")
 speedBox.Size = UDim2.new(0, 330, 0, 22)
-speedBox.Position = UDim2.new(0, 20, 0, 192)
+speedBox.Position = UDim2.new(0, 20, 0, 312)
 speedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 speedBox.TextSize = 11
@@ -250,7 +326,7 @@ Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
 
 local stuckBox = Instance.new("TextBox")
 stuckBox.Size = UDim2.new(0, 330, 0, 22)
-stuckBox.Position = UDim2.new(0, 20, 0, 218)
+stuckBox.Position = UDim2.new(0, 20, 0, 338)
 stuckBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 stuckBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 stuckBox.TextSize = 11
@@ -262,7 +338,7 @@ Instance.new("UICorner", stuckBox).CornerRadius = UDim.new(0, 6)
 
 local capBox = Instance.new("TextBox")
 capBox.Size = UDim2.new(0, 330, 0, 22)
-capBox.Position = UDim2.new(0, 20, 0, 244)
+capBox.Position = UDim2.new(0, 20, 0, 364)
 capBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 capBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 capBox.TextSize = 11
@@ -274,7 +350,7 @@ Instance.new("UICorner", capBox).CornerRadius = UDim.new(0, 6)
 
 local toggleDelayBox = Instance.new("TextBox")
 toggleDelayBox.Size = UDim2.new(0, 330, 0, 22)
-toggleDelayBox.Position = UDim2.new(0, 20, 0, 270)
+toggleDelayBox.Position = UDim2.new(0, 20, 0, 390)
 toggleDelayBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 toggleDelayBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleDelayBox.TextSize = 11
@@ -286,8 +362,8 @@ Instance.new("UICorner", toggleDelayBox).CornerRadius = UDim.new(0, 6)
 
 local logBox = Instance.new("TextLabel")
 logBox.Name = "CoordinateLogBox"
-logBox.Size = UDim2.new(0, 330, 0, 185)
-logBox.Position = UDim2.new(0, 20, 0, 298)
+logBox.Size = UDim2.new(0, 330, 0, 160)
+logBox.Position = UDim2.new(0, 20, 0, 418)
 logBox.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 logBox.BackgroundTransparency = 0.2
 logBox.TextColor3 = Color3.fromRGB(0, 255, 128)
@@ -296,7 +372,7 @@ logBox.Font = Enum.Font.Code
 logBox.TextXAlignment = Enum.TextXAlignment.Left
 logBox.TextYAlignment = Enum.TextYAlignment.Top
 logBox.TextWrapped = true
-logBox.Text = "=== METRICS ===\nRole: Default\nMode: Off | Auto-Kill/Aim: OFF | God Mode: OFF\nStatus: Idle\nCoins in Game: 0 | Session: 0\nInventory: 0 / 40\nPlayer: X:0 Y:0 Z:0"
+logBox.Text = "=== METRICS ===\nRole: Default\nMode: Off | Anti-Exploit: ON\nStatus: Idle\nCoins in Game: 0 | Session: 0\nInventory: 0 / 40\nPlayer: X:0 Y:0 Z:0"
 logBox.Parent = contentContainer
 Instance.new("UICorner", logBox).CornerRadius = UDim.new(0, 6)
 
@@ -310,15 +386,17 @@ minBtn.MouseButton1Click:Connect(function()
 		contentContainer.Visible = false
 	else
 		minBtn.Text = "-"
-		mainFrame.Size = UDim2.new(0, 370, 0, 520)
+		mainFrame.Size = UDim2.new(0, 370, 0, 625)
 		contentContainer.Visible = true
 	end
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
 	activeMode = "Off"
-	autoKillEnabled = false
+	instantKillEnabled = false
 	godModeEnabled = false
+	teleportCoinsEnabled = false
+	antiExploitEnabled = false
 	if activeMoverConnection then activeMoverConnection:Disconnect() end
 	visualFolder:ClearAllChildren()
 	espFolder:ClearAllChildren()
@@ -366,14 +444,64 @@ espBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
-autoKillBtn.MouseButton1Click:Connect(function()
-	autoKillEnabled = not autoKillEnabled
-	if autoKillEnabled then
-		autoKillBtn.Text = "Auto-Kill / Aim: ON"
-		autoKillBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+tpCoinsBtn.MouseButton1Click:Connect(function()
+	teleportCoinsEnabled = not teleportCoinsEnabled
+	if teleportCoinsEnabled then
+		tpCoinsBtn.Text = "Teleport Coins: ON"
+		tpCoinsBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
 	else
-		autoKillBtn.Text = "Auto-Kill / Aim: OFF"
-		autoKillBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+		tpCoinsBtn.Text = "Teleport Coins: OFF"
+		tpCoinsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	end
+end)
+
+instantKillBtn.MouseButton1Click:Connect(function()
+	instantKillEnabled = not instantKillEnabled
+	if instantKillEnabled then
+		instantKillBtn.Text = "Instant Kill: ON"
+		instantKillBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+	else
+		instantKillBtn.Text = "Instant Kill: OFF"
+		instantKillBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	end
+end)
+
+antiExploitBtn.MouseButton1Click:Connect(function()
+	antiExploitEnabled = not antiExploitEnabled
+	if antiExploitEnabled then
+		antiExploitBtn.Text = "Anti-Exploit Shield: ON"
+		antiExploitBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+	else
+		antiExploitBtn.Text = "Anti-Exploit Shield: OFF"
+		antiExploitBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	end
+end)
+
+tpMurdererBtn.MouseButton1Click:Connect(function()
+	local murderer, _ = findMurdererAndSheriff()
+	if murderer and murderer.Character and murderer.Character:FindFirstChild("HumanoidRootPart") then
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			hrp.CFrame = murderer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+			statusMessage = "Teleported to Murderer"
+		end
+	else
+		statusMessage = "Murderer not found yet!"
+	end
+end)
+
+tpSheriffBtn.MouseButton1Click:Connect(function()
+	local _, sheriff = findMurdererAndSheriff()
+	if sheriff and sheriff.Character and sheriff.Character:FindFirstChild("HumanoidRootPart") then
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			hrp.CFrame = sheriff.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+			statusMessage = "Teleported to Sheriff"
+		end
+	else
+		statusMessage = "Sheriff not found yet!"
 	end
 end)
 
@@ -405,7 +533,51 @@ autoToggleBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Standalone God Mode Background Loop (Runs concurrently with any mode)
+-- Comprehensive Anti-Exploit Shield Loop (Anti-Fling, Anti-Void, and Round-Start Proximity Evasion)
+task.spawn(function()
+	local lastSafeCFrame = CFrame.new(0, 50, 0)
+	while true do
+		task.wait(0.1)
+		if antiExploitEnabled then
+			local char = player.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+			
+			if hrp and humanoid then
+				-- 1. Anti-Fling Velocity Limiter (Blocks physics manipulation exploiters)
+				if hrp.AssemblyLinearVelocity.Magnitude > 180 and not teleportCoinsEnabled then
+					hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+					hrp.CFrame = lastSafeCFrame
+					statusMessage = "Blocked Fling Exploit!"
+				else
+					if hrp.Position.Y > -100 and math.abs(hrp.Position.Y) < 10000 then
+						lastSafeCFrame = hrp.CFrame
+					end
+				end
+				
+				-- 2. Anti-Void Protection (Teleports back up if thrown off the map)
+				if hrp.Position.Y < -50 then
+					hrp.CFrame = lastSafeCFrame + Vector3.new(0, 15, 0)
+					hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+					statusMessage = "Protected against Void Exploit!"
+				end
+				
+				-- 3. Round-Start Proximity Exploit Guard (Instantly evades players locking onto your spawn)
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+						local pDist = (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
+						if pDist < 7 then
+							hrp.CFrame = hrp.CFrame + Vector3.new(math.random(-40, 40), 20, math.random(-40, 40))
+							statusMessage = "Shield Evaded Nearby Threat!"
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- Standalone God Mode Background Loop
 task.spawn(function()
 	while true do
 		task.wait(0.1)
@@ -422,59 +594,194 @@ task.spawn(function()
 	end
 end)
 
--- Standalone Robust Gun Aiming & Auto-Attack Background Loop
+local function extractPosition(obj)
+	if not obj then return nil end
+	if obj:IsA("BasePart") then
+		return obj.Position
+	elseif obj:IsA("Model") then
+		if obj.PrimaryPart then
+			return obj.PrimaryPart.Position
+		else
+			local part = obj:FindFirstChildWhichIsA("BasePart", true)
+			if part then return part.Position end
+		end
+	end
+	return nil
+end
+
+local function countTotalGameCoins()
+	local count = 0
+	local keywords = {"coin", "ring", "cash", "token", "gold", "gem", "collect", "star", "point", "money", "crystal"}
+	local char = player.Character
+
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if char and (obj == char or obj:IsDescendantOf(char)) then
+			continue
+		end
+
+		local nameLower = string.lower(obj.Name)
+		local matched = false
+		for _, kw in ipairs(keywords) do
+			if string.find(nameLower, kw, 1, true) then
+				matched = true
+				break
+			end
+		end
+
+		if matched then
+			if extractPosition(obj) then
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
+local function scanAllCoins(rootPos)
+	local coins = {}
+	local keywords = {"coin", "ring", "cash", "token", "gold", "gem", "collect", "star", "point", "money", "crystal"}
+	local hazardKeywords = {"kill", "lava", "hazard", "death", "acid", "spike", "danger", "fire", "trap"}
+	local char = player.Character
+
+	local currentTime = tick()
+	for id, timeAdded in pairs(failedCoinBlacklist) do
+		if currentTime - timeAdded > 30 then
+			failedCoinBlacklist[id] = nil
+		end
+	end
+
+	local hazardPositions = {}
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj:IsA("BasePart") then
+			local nameLower = string.lower(obj.Name)
+			for _, kw in ipairs(hazardKeywords) do
+				if string.find(nameLower, kw, 1, true) then
+					table.insert(hazardPositions, obj.Position)
+					break
+				end
+			end
+		end
+	end
+
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if char and (obj == char or obj:IsDescendantOf(char)) then
+			continue
+		end
+
+		if failedCoinBlacklist[obj] then
+			continue
+		end
+
+		local nameLower = string.lower(obj.Name)
+		local matched = false
+		for _, kw in ipairs(keywords) do
+			if string.find(nameLower, kw, 1, true) then
+				matched = true
+				break
+			end
+		end
+
+		if matched then
+			local pos = extractPosition(obj)
+			if pos and (rootPos - pos).Magnitude < 400 then
+				local safeFromHazard = true
+				for _, hPos in ipairs(hazardPositions) do
+					if (pos - hPos).Magnitude < 8 then
+						safeFromHazard = false
+						break
+					end
+				end
+
+				if safeFromHazard then
+					local exists = false
+					for _, c in ipairs(coins) do
+						if (c.pos - pos).Magnitude < 1.5 then
+							exists = true
+							break
+						end
+					end
+					if not exists then
+						table.insert(coins, {pos = pos, name = obj.Name, instance = obj})
+					end
+				end
+			end
+		end
+	end
+
+	return coins
+end
+
+-- Teleport to Coins Background Loop
 task.spawn(function()
 	while true do
-		task.wait(0.1) -- Fast polling to lock aim and fire rapidly
-		if autoKillEnabled then
+		task.wait(0.15)
+		if teleportCoinsEnabled then
+			local char = player.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				if collectedCount >= MAX_CAPACITY then
+					collectedCount = 0
+				end
+				local coins = scanAllCoins(hrp.Position)
+				if #coins > 0 then
+					local nearestCoin = coins[1]
+					local minDst = (hrp.Position - nearestCoin.pos).Magnitude
+					for _, c in ipairs(coins) do
+						local dst = (hrp.Position - c.pos).Magnitude
+						if dst < minDst then
+							minDst = dst
+							nearestCoin = c
+						end
+					end
+					if nearestCoin then
+						statusMessage = "Teleporting to: " .. nearestCoin.name
+						hrp.CFrame = CFrame.new(nearestCoin.pos + Vector3.new(0, 0.5, 0))
+						collectedCount = collectedCount + 1
+						task.wait(0.08)
+					end
+				else
+					statusMessage = "Scanning Coins for TP..."
+				end
+			end
+		end
+	end
+end)
+
+-- Instant Kill & Target Teleport Background Loop
+task.spawn(function()
+	while true do
+		task.wait(0.1)
+		if instantKillEnabled then
 			local char = player.Character
 			local hrp = char and char:FindFirstChild("HumanoidRootPart")
 			local humanoid = char and char:FindFirstChildOfClass("Humanoid")
 			
 			if hrp and humanoid and humanoid.Health > 0 then
-				local target = nil
-				local minDst = 120 -- Expanded range suitable for guns/ranged weapons
+				local murderer, _ = findMurdererAndSheriff()
+				local targetChar = nil
 				
-				-- Scan for hostile players within range
-				for _, p in ipairs(Players:GetPlayers()) do
-					if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-						local pHum = p.Character:FindFirstChildOfClass("Humanoid")
-						if pHum and pHum.Health > 0 then
-							local dst = (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
-							if dst < minDst then
-								minDst = dst
-								target = p.Character
-							end
-						end
-					end
-				end
-				
-				-- Scan for hostile NPCs / mobs / zombies within range
-				for _, obj in ipairs(Workspace:GetDescendants()) do
-					if obj:IsA("Model") and obj ~= char and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") then
-						local hum = obj.Humanoid
-						if hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
-							local nameLower = string.lower(obj.Name)
-							if string.find(nameLower, "zombie") or string.find(nameLower, "mob") or string.find(nameLower, "enemy") or string.find(nameLower, "boss") or string.find(nameLower, "dummy") then
-								local dst = (hrp.Position - obj.HumanoidRootPart.Position).Magnitude
+				if murderer and murderer.Character and murderer.Character ~= char then
+					targetChar = murderer.Character
+				else
+					local minDst = 250
+					for _, p in ipairs(Players:GetPlayers()) do
+						if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+							local pHum = p.Character:FindFirstChildOfClass("Humanoid")
+							if pHum and pHum.Health > 0 then
+								local dst = (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
 								if dst < minDst then
 									minDst = dst
-									target = obj
+									targetChar = p.Character
 								end
 							end
 						end
 					end
 				end
 				
-				if target and target:FindFirstChild("HumanoidRootPart") then
-					local targetHrp = target.HumanoidRootPart
+				if targetChar and targetChar:FindFirstChild("HumanoidRootPart") then
+					local tHrp = targetChar.HumanoidRootPart
+					hrp.CFrame = tHrp.CFrame * CFrame.new(0, 0, 2)
 					
-					-- ROBUST AIMING: Force character to face the target instantly (locking Y axis rotation to prevent tilting)
-					local targetPos = targetHrp.Position
-					local lookAtPos = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
-					hrp.CFrame = CFrame.new(hrp.Position, lookAtPos)
-					
-					-- Ensure tool (gun) is equipped
 					local tool = char:FindFirstChildOfClass("Tool")
 					if not tool then
 						local backpack = player:FindFirstChildOfClass("Backpack")
@@ -487,7 +794,6 @@ task.spawn(function()
 						end
 					end
 					
-					-- Fire the weapon/gun robustly
 					if tool then
 						pcall(function()
 							tool:Activate()
@@ -615,123 +921,6 @@ task.spawn(function()
 	end
 end)
 
-local function extractPosition(obj)
-	if not obj then return nil end
-	if obj:IsA("BasePart") then
-		return obj.Position
-	elseif obj:IsA("Model") then
-		if obj.PrimaryPart then
-			return obj.PrimaryPart.Position
-		else
-			local part = obj:FindFirstChildWhichIsA("BasePart", true)
-			if part then return part.Position end
-		end
-	end
-	return nil
-end
-
-local function countTotalGameCoins()
-	local count = 0
-	local keywords = {"coin", "ring", "cash", "token", "gold", "gem", "collect", "star", "point", "money", "crystal"}
-	local char = player.Character
-
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		if char and (obj == char or obj:IsDescendantOf(char)) then
-			continue
-		end
-
-		local nameLower = string.lower(obj.Name)
-		local matched = false
-		for _, kw in ipairs(keywords) do
-			if string.find(nameLower, kw, 1, true) then
-				matched = true
-				break
-			end
-		end
-
-		if matched then
-			if extractPosition(obj) then
-				count = count + 1
-			end
-		end
-	end
-	return count
-end
-
-local function scanAllCoins(rootPos)
-	local coins = {}
-	local keywords = {"coin", "ring", "cash", "token", "gold", "gem", "collect", "star", "point", "money", "crystal"}
-	local hazardKeywords = {"kill", "lava", "hazard", "death", "acid", "spike", "danger", "fire", "trap"}
-	local char = player.Character
-
-	local currentTime = tick()
-	for id, timeAdded in pairs(failedCoinBlacklist) do
-		if currentTime - timeAdded > 30 then
-			failedCoinBlacklist[id] = nil
-		end
-	end
-
-	local hazardPositions = {}
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		if obj:IsA("BasePart") then
-			local nameLower = string.lower(obj.Name)
-			for _, kw in ipairs(hazardKeywords) do
-				if string.find(nameLower, kw, 1, true) then
-					table.insert(hazardPositions, obj.Position)
-					break
-				end
-			end
-		end
-	end
-
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		if char and (obj == char or obj:IsDescendantOf(char)) then
-			continue
-		end
-
-		if failedCoinBlacklist[obj] then
-			continue
-		end
-
-		local nameLower = string.lower(obj.Name)
-		local matched = false
-		for _, kw in ipairs(keywords) do
-			if string.find(nameLower, kw, 1, true) then
-				matched = true
-				break
-			end
-		end
-
-		if matched then
-			local pos = extractPosition(obj)
-			if pos and (rootPos - pos).Magnitude < 350 then
-				local safeFromHazard = true
-				for _, hPos in ipairs(hazardPositions) do
-					if (pos - hPos).Magnitude < 10 then
-						safeFromHazard = false
-						break
-					end
-				end
-
-				if safeFromHazard then
-					local exists = false
-					for _, c in ipairs(coins) do
-						if (c.pos - pos).Magnitude < 1.5 then
-							exists = true
-							break
-						end
-					end
-					if not exists then
-						table.insert(coins, {pos = pos, name = obj.Name, instance = obj})
-					end
-				end
-			end
-		end
-	end
-
-	return coins
-end
-
 local function buildCoinRoute(startPos, rawCoins)
 	local route = {}
 	local pool = {}
@@ -739,7 +928,6 @@ local function buildCoinRoute(startPos, rawCoins)
 		table.insert(pool, c)
 	end
 	
-	-- Shuffle pool slightly using client's seeded rng to diversify routes across different instances
 	for i = #pool, 2, -1 do
 		local j = rng:NextInteger(1, i)
 		pool[i], pool[j] = pool[j], pool[i]
@@ -751,7 +939,6 @@ local function buildCoinRoute(startPos, rawCoins)
 		local bestScore = math.huge
 		for i, c in ipairs(pool) do
 			local dst = (currentPos - c.pos).Magnitude
-			-- Apply a unique seed-based weight so multiple devices prioritize coins differently
 			local score = dst + (rng:NextNumber() * 6)
 			if score < bestScore then
 				bestScore = score
@@ -894,11 +1081,20 @@ local function startNavigation()
 	local moveRefreshTimer = 0
 
 	local function forceEvadeAndChangeDirection()
-		statusMessage = "Blocked/Stuck - Repathing"
+		consecutiveStuckCount = consecutiveStuckCount + 1
+		statusMessage = "Blocked/Stuck (" .. consecutiveStuckCount .. ") - Repathing"
 		humanoid.Jump = true
-		local evadePos = rootPart.Position + Vector3.new(rng:NextInteger(-12, 12), 0, rng:NextInteger(-12, 12))
+		
+		if consecutiveStuckCount >= 3 then
+			consecutiveStuckCount = 0
+			coinQueue = {}
+			activeCoins = {}
+			targetPosition = rootPart.Position + Vector3.new(rng:NextInteger(-25, 25), 0, rng:NextInteger(-25, 25))
+		end
+
+		local evadePos = rootPart.Position + Vector3.new(rng:NextInteger(-15, 15), 0, rng:NextInteger(-15, 15))
 		humanoid:MoveTo(evadePos)
-		task.wait(0.3)
+		task.wait(0.4)
 		if activeMoverConnection then activeMoverConnection:Disconnect() end
 		task.spawn(executeMovementLoop)
 	end
@@ -975,6 +1171,7 @@ local function startNavigation()
 			end
 		else
 			stuckTimer = 0
+			consecutiveStuckCount = 0
 			lastPosCheck = rootPart.Position
 		end
 
@@ -1002,6 +1199,21 @@ end
 executeMovementLoop = function()
 	task.spawn(startNavigation)
 end
+
+-- Periodic Coin Hunter Refresh Task (Every 15 seconds)
+task.spawn(function()
+	while true do
+		task.wait(15)
+		if activeMode == "CoinHunt" then
+			loopToken = loopToken + 1
+			coinQueue = {}
+			activeCoins = {}
+			statusMessage = "Refreshing Coin Hunt..."
+			if activeMoverConnection then activeMoverConnection:Disconnect() end
+			executeMovementLoop()
+		end
+	end
+end)
 
 task.spawn(function()
 	local timeInMode = 0
@@ -1103,6 +1315,31 @@ wanderBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- Automatically start Coin Hunter after map and character load
+task.spawn(function()
+	if not game:IsLoaded() then
+		game.Loaded:Wait()
+	end
+	
+	local char = player.Character or player.CharacterAdded:Wait()
+	task.wait(3)
+	
+	if activeMode == "Off" then
+		collectedCount = 0
+		activeMode = "CoinHunt"
+		coinBtn.Text = "Coin Hunt: ON"
+		coinBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+		
+		wanderBtn.Text = "Random Wander: OFF"
+		wanderBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+		
+		coinQueue = {}
+		statusMessage = "Auto-started Coin Hunt..."
+		if activeMoverConnection then activeMoverConnection:Disconnect() end
+		executeMovementLoop()
+	end
+end)
+
 task.spawn(function()
 	while true do
 		updatePlayerRole()
@@ -1117,8 +1354,8 @@ task.spawn(function()
 		end
 
 		logBox.Text = string.format(
-			"=== METRICS ===\nRole: %s\nMode: %s | Auto-Kill/Aim: %s | God Mode: %s\nStatus: %s\nCoins in Game: %d | Session: %d\nInventory: %d / %d\nFound: %d | Queued: %d\nTarget: %s\nPlayer: %s",
-			currentPlayerRole, activeMode, (autoKillEnabled and "ON" or "OFF"), (godModeEnabled and "ON" or "OFF"), statusMessage, totalCoinsInGame, collectedCount, collectedCount, MAX_CAPACITY, #activeCoins, #coinQueue, targetCoinName, playerPosStr
+			"=== METRICS ===\nRole: %s\nMode: %s | Anti-Exploit: %s\nStatus: %s\nCoins in Game: %d | Session: %d\nInventory: %d / %d\nFound: %d | Queued: %d\nTarget: %s\nPlayer: %s",
+			currentPlayerRole, activeMode, (antiExploitEnabled and "ON" or "OFF"), statusMessage, totalCoinsInGame, collectedCount, collectedCount, MAX_CAPACITY, #activeCoins, #coinQueue, targetCoinName, playerPosStr
 		)
 	end
 end)
